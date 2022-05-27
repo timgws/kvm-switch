@@ -1,0 +1,17 @@
+================================================================
+              HDMI CMX44AB Status
+              FW Version: 2.22
+
+Power   IR      Key     Beep
+On      On      On      Off
+
+Input   Edid         HDMIcon
+01      Force___11   On
+02      Force___11   On
+03      Force___11   Off
+04      Force___11   Off
+
+Output  FromIn       HDMIcon   OutputEn    OSP   Mute
+01      01           Off       Yes         SNK   Off
+02      02           On        Yes         SNK   Off
+================================================================
