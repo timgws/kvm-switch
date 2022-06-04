@@ -230,7 +230,7 @@ func (d *BlustreamMatrix) init() {
 		d.statusReading = WaitingInput
 		d.Error = err
 		d.HasError = true
-		log.Printf("Could not send %d bytes for driver.", n)
+		debugLog("Could not send %d bytes for driver.", n)
 	}
 	port.Flush()
 }
@@ -246,7 +246,7 @@ func (d *BlustreamMatrix) pingStatus() {
 		d.statusReading = WaitingInput
 		d.Error = err
 		d.HasError = true
-		log.Printf("Could not send %d bytes for driver.", n)
+		debugLog("Could not send %d bytes for driver.", n)
 	}
 	port.Flush()
 }
@@ -260,10 +260,10 @@ func (d *BlustreamMatrix) writePort(port *serial.Port) {
 		for {
 			select {
 			case msg := <-d.messages:
-				log.Printf("==> WRITE PORT MSG: %s", msg)
+				debugLog("==> WRITE PORT MSG: %s", msg)
 				n, err := port.Write([]byte(msg + "\r\n"))
 				if err != nil {
-					log.Printf("Error writing %d bytes: %s", n, err)
+					debugLog("Error writing %d bytes: %s", n, err)
 					d.HasError = true
 					d.Error = err
 				}
@@ -293,9 +293,6 @@ func (d *BlustreamMatrix) readPort() {
 
 		commands := strings.Split(command, "\r\n")
 
-		debugLog("BUFFER CONTENTS: %s tmpString %s", buf, tmpString)
-		debugLog("commands: %s", commands)
-
 		numCommands := len(commands)
 		if numCommands > 1 {
 			for i := range commands {
@@ -319,22 +316,18 @@ func (d *BlustreamMatrix) readPort() {
 
 					d.serialResponse <- currentCommand
 
-					log.Printf("[blustream] Command #%d/%d: %s", i+1, len(commands), currentCommand)
+					debugLog("==> Command #%d/%d: %s", i+1, len(commands), currentCommand)
 				}
 			}
+
+			if EnableDebugMode == false{
+				debugLog2("🧐 Inspecting the buffer contents")
+				debugLog2("BUFFER CONTENTS: %s tmpString: %s", buf, tmpString)
+				debugLog2("commands: %s - %q", commands, buf)
+			}
 		} else {
-			debugLog("Incomplete command from serial... expected newline")
+			//debugLog("Incomplete command from serial... expected newline")
 		}
-
-		if EnableDebugMode {
-			log.Printf("🧐 Driver is in debug mode. Here is our current buffer/commands contents")
-			log.Printf("BUFFER CONTENTS: %s tmpString: %s", buf, tmpString)
-			log.Printf("commands: %s", commands)
-			log.Printf("%q", buf)
-			log.Printf("---------------------------")
-		}
-
-		//log.Printf("%s %q", buf, buf)
 	}
 }
 
