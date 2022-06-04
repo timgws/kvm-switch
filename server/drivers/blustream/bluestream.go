@@ -15,7 +15,8 @@ const EnableDebugMode = false
 // Reading keeps track of where the statemachine is in reading the `status` command from the BlueStream.
 type Reading int
 const (
-	ReadingModel Reading = iota
+	NotReadingStatus Reading = iota
+	ReadingModel
 	ReadingVersion
 	WaitingInput
 	ReadingInput
@@ -356,23 +357,35 @@ func (d *BlustreamMatrix) processResponses() {
 				}
 
 				// NOTE status-response.txt to see what we are parsing.
+				// If we see that the STATUS command is incoming, then we need to hold some state:
 				if d.statusIncoming && msg == "STATUS" {
-					d.statusConfirmed = true
-					d.statusStarted = false
+					// State 1: starting to read the status, but the command itself has not started to be received.
+					// State 2: skip normal command processing, and parse the status command.
+					// State 3: Finished reading the status command, go back to reading the command output as normal.
+					debugLog("🍔 Eating the status command from Blustream")
+					// Here we enter state 1.
 					d.statusReading = ReadingModel
-				} else if d.statusConfirmed && len(msg) > 2 {
+					d.statusStarted = true // get ready for state 2.
+					d.statusIncoming = false
+				} else if d.statusReading > NotReadingStatus && len(msg) > 2 {
 					if msg[:2] == "==" {
 						// for the first set of "==", we need to stay in the status incoming state.
 						// for the second, we can leave this special state.
-						if !d.statusStarted {
-							d.statusIncoming = false
-							d.statusConfirmed = false
+						if d.statusStarted {
+							// Here we enter state 2.
+							debugLog("🥇 The next line of should be the start of our statuses.")
+							d.statusStarted = false
+							continue
 						}
+
+						// Here we enter state 3.
+						debugLog("🥇 We have finished reading the status.")
 						d.statusStarted = true
-						d.statusConfirmed = true
+						d.statusReading = NotReadingStatus // leave our status state
 						continue
 					}
 
+					debugLog("😰 Status confirmed. Should it be?")
 					d.readStatus(msg)
 					continue
 				}
@@ -414,6 +427,6 @@ func (d *BlustreamMatrix) GetInput(inputName string) *BlustreamInput {
 // debugLog will output something only if EnableDebugMode is true.
 func debugLog(msg string, v ...interface{}) {
 	if EnableDebugMode {
-		log.Printf(msg, v)
+		log.Printf("[blustream]: " + msg, v...)
 	}
 }
