@@ -33,6 +33,7 @@ var switched = false
 var switching = false
 
 func main() {
+	flag.Parse()
 	systray.Run(onReady, onExit)
 	go PollMousePosition()
 
@@ -85,19 +86,15 @@ func mouseHasMoved(x int, y int) {
 	if x == 0 && lastX > 0 && switched == false {
 		switched = true
 		switchInput("left")
-	} else if x == maxX && lastX < maxX && switched == false {
+	} else if x == maxX-1 && lastX < maxX-2 && switched == false {
 		switched = true
 		switchInput("right")
 	} else if y == 0 && lastY > 0 && switched == false {
 		switched = true
-		if switching == false {
-			switchInput("top")
-		}
-	} else if y == maxY && lastY < maxY && switched == false {
+		switchInput("top")
+	} else if y == maxY-1 && lastY < maxY-2 && switched == false {
 		switched = true
-		if switching == false {
-			switchInput("bottom")
-		}
+		switchInput("bottom")
 	}
 
 	/*
@@ -106,7 +103,7 @@ func mouseHasMoved(x int, y int) {
 	*/
 
 	if EnableDebugMode {
-		debugLog("[kvm-client] mouse pos: %d x %d", x, )
+		debugLog("[kvm-client] mouse pos (current: %d x %d, previous: %d x %d, max: %d x %d)", x, y, lastX, lastY, maxX, maxY)
 	}
 
 	lastX = x
@@ -168,6 +165,6 @@ func onExit() {
 // debugLog will output something only if EnableDebugMode is true.
 func debugLog(msg string, v ...interface{}) {
 	if EnableDebugMode {
-		log.Printf(msg, v)
+		log.Printf(msg, v...)
 	}
 }
