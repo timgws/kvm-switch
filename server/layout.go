@@ -104,6 +104,10 @@ func (l *Layout) FindActions(name string, direction string) (*[]Action, error) {
 		actions = &ourDevice.Directions.Bottom
 	}
 
+	if actions == nil {
+		return nil, nil
+	}
+
 	if len(*actions) > 0 {
 		return actions, nil
 	}
