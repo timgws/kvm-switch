@@ -190,6 +190,8 @@ func (d *BlustreamMatrix) SetOutput(outputName string, inputName string) {
 	var matrixOutput *BlustreamOutput
 	var matrixInput *BlustreamInput
 
+	debugLog("Out/In: %s, %s", d.Outputs, d.Inputs)
+
 	for i, output := range d.Outputs {
 		if output.OutputName == outputName {
 			debugLog("<- OUTPUT %s == %s", output.OutputName, outputName)
@@ -389,8 +391,8 @@ func (d *BlustreamMatrix) processResponses() {
 						//match := []byte(msg[9:])
 						r, _ := regexp.Compile(`Set output (\d*) connect from input (\d*)`)
 						f := r.FindAllStringSubmatch(msg[9:], 12)
-						if len(f[0]) == 2 {
-							log.Printf("Swapped input %s to output %s", f[0][2], f[0][1])
+						if len(f[0]) == 3 {
+							debugLog("Swapped input %s to output %s", f[0][2], f[0][1])
 						}
 						d.finishedSwap <- true
 						d.switching = false
