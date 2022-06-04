@@ -269,7 +269,8 @@ func (d *StartechKvm) processResponses() {
 }
 
 func (d *StartechKvm) SetOutput(inputName string) {
-	d.messages <- "CH" + inputName
+    //d.messages <- "CH" + inputName
+	d.messages <- "K1P" + inputName
 }
 
 func (d *StartechKvm) LastError() error {
