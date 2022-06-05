@@ -76,7 +76,7 @@ To see if the server is running successfully, you can use one of the [API Endpoi
 ```
 
 ## TODO/Upcoming Features
-* [ ] Fix the client, so that it reconnects when the server's connection goes away.
+* [x] Fix the client, so that it reconnects when the server's connection goes away.
 * [ ] Enable using hotkeys to lock the current screen/not send glide commands to the server.
 * [ ] Use DDC/CI to control the monitor inputs, so a hardware matrix is not required.
 * [ ] Support Synergy, so DDC/CI commands can be issued for additional hardware-free solution.
