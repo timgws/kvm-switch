@@ -16,7 +16,7 @@ to swap the computer receiving the inputs) with the stability of using USB DDM
 to redirect input devices. Lower latency, better(ish) security and much better
 application compatibility.
 
-As an additional benefit, Fence allows you to design your switching on a per-direction, per-device level,
+Fence allows you to design your switching on a per-direction, per-device level,
 allowing full control over your switching layout.
 
 ## Where does it run?
@@ -29,7 +29,7 @@ allowing full control over your switching layout.
 * HDMI matrix switches (such as the Blustream CMX44AB)
 
 ## How do I get up and running?
-Currently, the configuration is hardcoded into the binary at build time.
+Currently, the configuration is hardcoded into the `server` binary at build time.
 
 ### Step 1: Configure a server
 A Fence server is required to run on a machine that has access to all of the devices that
@@ -52,7 +52,7 @@ allowing for chains if control of a larger range of devices at once is desired.
 Start the server:
 ```shell
 # cd server
-# go run -addr :8787
+# go build
 # ./server -addr :8787
 2022/05/29 13:03:23 Started driver: Startech SV431DVIUDDM
 2022/05/29 13:03:23 Started driver: Blustream
@@ -69,16 +69,22 @@ To see if the server is running successfully, you can use one of the [API Endpoi
 ### Step 2: Install client on all machines
 ```shell
 # cd client
-# go run -addr 10.2.2.2:8787 -name left
+# go build
+# ./client -addr 10.2.2.2:8787 -name left
 2022/05/29 13:06:23 [GUI] The application has booted
 2022/05/29 13:06:23 [Websocket] Starting Client
 2022/05/29 13:06:23 [Glide] get screen size:  3360x1890
 ```
 
 ## TODO/Upcoming Features
-* [x] Fix the client, so that it reconnects when the server's connection goes away.
-* [ ] Enable using hotkeys to lock the current screen/not send glide commands to the server.
-* [ ] Use DDC/CI to control the monitor inputs, so a hardware matrix is not required.
-* [ ] Support Synergy, so DDC/CI commands can be issued for additional hardware-free solution.
-* [ ] Web interface to define the edges of different devices.
-* [ ] Improve switching solution for Blustream devices.
+* [x] Improve switching solution for Blustream devices.
+* [x] [#1](https://github.com/timgws/kvm-switch/issues/1)
+  Fix the client, so that it reconnects when the server's connection goes away.
+* [ ] [#2](https://github.com/timgws/kvm-switch/issues/2)
+  Enable using hotkeys to lock the current screen/not send glide commands to the server.
+* [ ] [#3](https://github.com/timgws/kvm-switch/issues/3)
+  Use DDC/CI to control the monitor inputs, so a hardware matrix is not required.
+* [ ] [#3](https://github.com/timgws/kvm-switch/issues/3)
+  Support Synergy, so DDC/CI commands can be issued for additional hardware-free solution.
+* [ ] [#4](https://github.com/timgws/kvm-switch/issues/4)
+  Web interface to define the edges of different devices.
