@@ -52,7 +52,7 @@ func main() {
 func PollMousePosition() {
 	go doEvery(time.Second/DisplayRefreshRate, pollMousePosition)
 	maxX, maxY = robotgo.GetScreenSize()
-	fmt.Println("get screen size: ", maxX, maxY)
+	fmt.Println("[Glide] get screen size: ", maxX, maxY)
 }
 
 func deviceHasAtLeastOneDisplay() bool {
@@ -61,7 +61,7 @@ func deviceHasAtLeastOneDisplay() bool {
 	// TODO: If this does not crash on Windows, maybe only run on macOS
 	if numDisplays == 0 {
 		// TODO: Fix me, we should only show this once every $X minutes. This will flood the console.
-		fmt.Println("SKIPPING GET PIXEL/MOUSE POS BECAUSE THERE ARE NO SCREENS ATTACHED.")
+		debugLog("[WARNING]: SKIPPING GET PIXEL/MOUSE POS BECAUSE THERE ARE NO SCREENS ATTACHED.")
 		return false
 	}
 
@@ -112,7 +112,7 @@ func mouseHasMoved(x int, y int) {
 
 func switchInput(direction string) {
 	if switching == false {
-		debugLog("📺 Mouse has moved to the %s desktop.", direction)
+		debugLog("[Fence]: 📺 Mouse has moved to the %s desktop.", direction)
 		switching = true
 	}
 
@@ -136,18 +136,16 @@ func onReady() {
 	//go processInput()
 
 	systray.SetIcon(icon.Data)
-	systray.SetTitle("Awesome App")
-	systray.SetTooltip("Pretty awesome超级棒")
-	mRefresh := systray.AddMenuItem("Refresh", "Quit the whole app")
+	systray.SetTitle("Fence")
+	systray.SetTooltip("Fence: Move to corner, swap your input")
+	mRefresh := systray.AddMenuItem("Refresh", "Refresh the state")
 	mQuit := systray.AddMenuItem("Quit", "Quit the whole app")
 
 	// Sets the icon of a menu item. Only available on Mac and Windows.
 	mQuit.SetIcon(icon.Data)
 	go func() {
 		<-mQuit.ClickedCh
-		fmt.Println("Requesting quit")
 		systray.Quit()
-		fmt.Println("Finished quitting")
 	}()
 	go func() {
 		<-mRefresh.ClickedCh
