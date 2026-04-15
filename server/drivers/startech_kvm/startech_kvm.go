@@ -4,17 +4,23 @@ import (
 	"bytes"
 	"github.com/tarm/serial"
 	d "github.com/timgws/kvm-switch/server/drivers"
+	"github.com/timgws/kvm-switch/server/serialdiscovery"
 	"log"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const EnableDebugMode = false
+var EnableDebugMode = false
 
 type StartechConfig struct {
 	SerialDevice string
-	SerialBaud int
+	SerialBaud   int
+	AutoDiscover bool
+	Match        serialdiscovery.Match
+
+	ShortName string
+	Name      string
 }
 
 type StartechState struct {
@@ -42,26 +48,47 @@ type StartechKvm struct {
 	serialResponse chan string
 
 	state      StartechState
-	switching  bool
-	switched   bool
 	firstError bool
 }
 
 func NewInstance() *StartechKvm {
+	return NewInstanceWithConfig(StartechConfig{
+		SerialDevice: "/dev/tty.usbserial-141140",
+		SerialBaud:   115200,
+		ShortName:    "kvm",
+		Name:         "Startech SV431DVIUDDM",
+	})
+}
+
+func NewInstanceWithConfig(cfg StartechConfig) *StartechKvm {
+	if cfg.SerialBaud == 0 {
+		cfg.SerialBaud = 115200
+	}
+	if cfg.ShortName == "" {
+		cfg.ShortName = "kvm"
+	}
+	if cfg.Name == "" {
+		cfg.Name = "Startech SV431DVIUDDM"
+	}
+
 	return &StartechKvm{
 		isRunning: false,
 		Driver: d.Driver{
-			Name: "Startech SV431DVIUDDM",
-			ShortName: "kvm",
+			Name:      cfg.Name,
+			ShortName: cfg.ShortName,
 		},
 		config: StartechConfig{
-			SerialDevice: "/dev/tty.usbserial-141140",
-			SerialBaud: 115200,
+			SerialDevice: cfg.SerialDevice,
+			SerialBaud:   cfg.SerialBaud,
+			AutoDiscover: cfg.AutoDiscover,
+			Match:        cfg.Match,
+			ShortName:    cfg.ShortName,
+			Name:         cfg.Name,
 		},
-		NumOfInputs: 4,
+		NumOfInputs:  4,
 		NumOfOutputs: 1,
-		firstError: true,
-		state: StartechState{},
+		firstError:   true,
+		state:        StartechState{},
 	}
 }
 
@@ -82,11 +109,25 @@ func (d *StartechKvm) GetShortName() string {
 
 // Start will initialize the connection...
 func (d *StartechKvm) Start() bool {
-	d.StartAttempted = true
-	s_dev := d.config.SerialDevice
-	s_baud := d.config.SerialBaud
+	// Ensure channels exist before any goroutine uses them.
+	if d.messages == nil {
+		d.messages = make(chan string, 64)
+	}
+	if d.serialResponse == nil {
+		d.serialResponse = make(chan string, 256)
+	}
 
-	c := &serial.Config{Name: s_dev, Baud: s_baud}
+	d.StartAttempted = true
+
+	s_dev, err := serialdiscovery.Resolve(d.config.SerialDevice, d.config.AutoDiscover, d.config.Match)
+	if err != nil {
+		d.Error = err
+		d.HasError = true
+		return false
+	}
+	d.config.SerialDevice = s_dev
+
+	c := &serial.Config{Name: d.config.SerialDevice, Baud: d.config.SerialBaud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		d.Error = err
@@ -95,11 +136,8 @@ func (d *StartechKvm) Start() bool {
 
 	go d.readPort(s)
 	go d.init(s)
-
 	go d.processResponses()
-
 	go d.writePort(s)
-
 	return true
 }
 
@@ -126,10 +164,8 @@ func (d *StartechKvm) DriverName() string {
 func (d *StartechKvm) GetStatus() {
 }
 
-
 // writePort manages a channel that allows us to send & receive data to this serial connection.
 func (d *StartechKvm) writePort(port *serial.Port) {
-	d.messages = make(chan string)
 	log.Printf("WRITE PORT STARTED")
 
 	go func() {
@@ -160,7 +196,6 @@ func (d *StartechKvm) readPort(port *serial.Port) {
 		if err != nil {
 			log.Fatal(n, err)
 		}
-
 
 		b := bytes.Trim(buf, "\x00")
 		tmpString := string(b)
@@ -219,8 +254,6 @@ func (d *StartechKvm) readPort(port *serial.Port) {
 
 // processResponses reads serial commands that have been fully read from the serial connection.
 func (d *StartechKvm) processResponses() {
-	d.serialResponse = make(chan string)
-
 	go func() {
 		for {
 			select {
@@ -269,7 +302,7 @@ func (d *StartechKvm) processResponses() {
 }
 
 func (d *StartechKvm) SetOutput(inputName string) {
-    //d.messages <- "CH" + inputName
+	//d.messages <- "CH" + inputName
 	d.messages <- "K1P" + inputName
 }
 
