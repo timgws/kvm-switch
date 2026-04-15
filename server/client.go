@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/websocket"
+	"github.com/timgws/kvm-switch/server/config"
 	"log"
 	"net/http"
 	"reflect"
@@ -60,7 +62,10 @@ type Client struct {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
+		err := c.conn.Close()
+		if err != nil {
+			log.Printf("readPump error: %e\n", err)
+		}
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -126,12 +131,18 @@ func (c *Client) writePump() {
 }
 
 // serveWs handles websocket requests from the peer.
-func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request, cfg *config.Config) {
+	if !authorizeRequest(r, cfg.Server.AuthToken) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+
 	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
 	client.hub.register <- client
 
@@ -157,4 +168,17 @@ func (sd *SwapDevice) Unmarshal(data []byte) error {
 
 	}
 	return nil
+}
+
+func authorizeRequest(r *http.Request, token string) bool {
+	if token == "" {
+		return false
+	}
+	h := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(h, prefix) {
+		return false
+	}
+	got := strings.TrimPrefix(h, prefix)
+	return subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1
 }

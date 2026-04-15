@@ -1,81 +1,172 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
+	"strings"
 
+	"github.com/timgws/kvm-switch/server/config"
 	"github.com/timgws/kvm-switch/server/drivers"
 	"github.com/timgws/kvm-switch/server/drivers/blustream"
 	"github.com/timgws/kvm-switch/server/drivers/startech_kvm"
+	"github.com/timgws/kvm-switch/server/serialdiscovery"
 )
 
-const (
-	maxBufferSize = 1024
-	EnableDebugMode = true
-)
-var doneChan = make(chan error, 1)
-var buffer = make([]byte, maxBufferSize)
+var EnableDebugMode = true
 
-var serverContext context.Context
-var serverContextCtx context.Context
-var serverContextCancel context.Context
-
-var addr = flag.String("addr", ":8787", "http service address")
+var configPath = flag.String("config", "config.toml", "path to server config.toml")
+var addr = flag.String("addr", "", "http service address (overrides config.server.addr)")
 
 type allDrivers struct {
 	Drivers []drivers.DriverInterface
 }
+
 var Drivers allDrivers
 var TheLayout *Layout
 var JSONLayout []byte
 
 
 func main() {
-	generateLayout()
-	registerDrivers()
-	startDrivers()
-
 	flag.Parse()
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
+	listenAddr := cfg.Server.Addr
+	if *addr != "" {
+		listenAddr = *addr
+	}
+
+	setDebugMode(cfg)
+	generateLayout(cfg)
+	registerDrivers(cfg)
+	startDrivers()
 
 	hub := newHub()
 	go hub.run()
 
-	http.HandleFunc("/", serveHome)
-	http.HandleFunc("/layout", serveLayout)
-	http.HandleFunc("/driverStatus", serveDriverStatus)
-	http.HandleFunc("/refreshStatus", serveRefreshStatus)
-	http.HandleFunc("/swap/:driver/:input/:output", serveSwap)
-	http.HandleFunc("/swap", serveSwap)
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		serveWs(hub, w, r)
+	mux := http.NewServeMux()
+
+	// Basic endpoints
+	mux.HandleFunc("GET /", serveHome)
+	mux.HandleFunc("GET /layout", serveLayout)
+	mux.HandleFunc("GET /driverStatus", serveDriverStatus)
+	mux.HandleFunc("POST /refreshStatus", serveRefreshStatus)
+	mux.HandleFunc("POST /swap/{driver}/{input}/{output}", serveSwap)
+	mux.HandleFunc("POST /action/{name}/{direction}", serveAction)
+
+	mux.HandleFunc("GET /ws", func(w http.ResponseWriter, r *http.Request) {
+		serveWs(hub, w, r, cfg)
 	})
 
-	err := http.ListenAndServe(*addr, nil)
-	if err != nil {
-		log.Printf("Failed to start websocket: ListenAndServe: %s", err)
+	if err := http.ListenAndServe(listenAddr, mux); err != nil {
+		log.Printf("Failed to start server: %v", err)
 	}
 }
 
-// generateLayout should generate a layout from configuration.
-// TODO: fix the should.
-func generateLayout() {
-	TheLayout = BuildLayout()
-	if (EnableDebugMode) {
-		JSONLayout, _ = json.Marshal(TheLayout)
+func setDebugMode(cfg *config.Config) {
+	EnableDebugMode = cfg.Server.Debug
+
+	startech_kvm.EnableDebugMode = cfg.Server.Debug
+	blustream.EnableDebugMode = cfg.Server.Debug
+
+	for _, part := range cfg.Server.DebugModules {
+		shouldDebug := !strings.HasPrefix(part, "!")
+		if shouldDebug {
+			part = strings.TrimPrefix(part, "!")
+		}
+
+		switch part {
+		case "server":
+			EnableDebugMode = shouldDebug
+		case "startech_kvm":
+			startech_kvm.EnableDebugMode = shouldDebug
+		case "blustream":
+			blustream.EnableDebugMode = shouldDebug
+		}
+	}
+}
+
+// generateLayout generates a layout from configuration.
+func generateLayout(cfg *config.Config) {
+	TheLayout = buildLayoutFromConfig(cfg)
+	JSONLayout, _ = json.Marshal(TheLayout)
+	if EnableDebugMode {
 		log.Printf("Layout JSON: %s", string(JSONLayout))
 	}
 }
 
-// registerDrivers should go through config, and init the correct drivers required for the layout.
-// TODO: fix the 'should'
-func registerDrivers() {
-	stkvm := startech_kvm.NewInstance()
-	Drivers.Drivers = append(Drivers.Drivers, stkvm)
-	bsmatrix := blustream.NewInstance()
-	Drivers.Drivers = append(Drivers.Drivers, bsmatrix)
+func buildLayoutFromConfig(cfg *config.Config) *Layout {
+	l := &Layout{}
+	for _, c := range cfg.Layout.Computers {
+		l.Computers = append(l.Computers, Computer{
+			Name: c.Name,
+			Directions: Directions{
+				Left:   convertActions(c.Left),
+				Right:  convertActions(c.Right),
+				Top:    convertActions(c.Top),
+				Bottom: convertActions(c.Bottom),
+			},
+		})
+	}
+	return l
+}
+
+func convertActions(in []config.ActionConfig) []Action {
+	out := make([]Action, 0, len(in))
+	for _, a := range in {
+		out = append(out, Action{
+			DriverName:    a.Driver,
+			PerformAction: a.Action,
+		})
+	}
+	return out
+}
+
+// registerDrivers goes through the provided config, and prepares drivers required for the layout.
+func registerDrivers(cfg *config.Config) {
+	Drivers.Drivers = nil
+
+	for _, dcfg := range cfg.Drivers {
+		switch dcfg.Type {
+		case "startech_kvm":
+			drv := startech_kvm.NewInstanceWithConfig(startech_kvm.StartechConfig{
+				SerialDevice: dcfg.SerialDevice,
+				SerialBaud:   dcfg.Baud,
+				AutoDiscover: dcfg.AutoDiscover,
+				Match: serialdiscovery.Match{
+					VID: dcfg.USBVID, PID: dcfg.USBPID,
+					SerialNumber:    dcfg.SerialNumber,
+					ProductContains: dcfg.ProductContains,
+				},
+				ShortName: dcfg.ShortName,
+				Name:      dcfg.Name,
+			})
+			Drivers.Drivers = append(Drivers.Drivers, drv)
+
+		case "blustream":
+			drv := blustream.NewInstanceWithConfig(blustream.BlustreamConfig{
+				SerialDevice: dcfg.SerialDevice,
+				SerialBaud:   dcfg.Baud,
+				AutoDiscover: dcfg.AutoDiscover,
+				Match: serialdiscovery.Match{
+					VID: dcfg.USBVID, PID: dcfg.USBPID,
+					SerialNumber:    dcfg.SerialNumber,
+					ProductContains: dcfg.ProductContains,
+				},
+				ShortName: dcfg.ShortName,
+				Name:      dcfg.Name,
+			})
+			Drivers.Drivers = append(Drivers.Drivers, drv)
+
+		default:
+			log.Fatalf("unknown driver type: %q", dcfg.Type)
+		}
+	}
 }
 
 // startDrivers will start all registered drivers.
@@ -83,10 +174,10 @@ func startDrivers() {
 	for _, driver := range Drivers.Drivers {
 		starting := driver.Start()
 		if EnableDebugMode {
-			log.Printf("Started driver: %s (did it attempt to start? %b)", driver.DriverName(), starting)
+			log.Printf("Started driver: %s (attempted=%t)", driver.DriverName(), starting)
 		}
 		if driver.LastError() != nil {
-			log.Printf("[%s]: ERROR: %e", driver.DriverName(), driver.LastError())
+			log.Printf("[%s]: ERROR: %v", driver.DriverName(), driver.LastError())
 		}
 	}
 }

@@ -1,0 +1,67 @@
+[server]
+addr = ":8787"
+auth_token = "THIS_SHOULD_BE_UNIQUE_AND_SECRET"
+debug = true
+debug_modules = ["startech_kvm"]
+
+[tls]
+enabled = true
+dir = "/home/tim/.config/fence-secrets/"
+cert_file = "server.pem"
+key_file  = "server-key.pem"
+ca_file   = "ca.pem"
+dns_names = ["freebsd.server"]
+ip_addresses = ["10.2.2.20"]
+
+# Drivers are registered in this order (supports multiple instances).
+# If you are using Windows, look at the auto_discover settings below.
+[[drivers]]
+type = "startech_kvm"
+short_name = "kvm"
+baud = 115200
+serial_device = "/dev/tty.usbserial-141140"
+auto_discover = false
+
+[[drivers]]
+type = "blustream"
+short_name = "matrix"
+baud = 57600
+serial_device = "/dev/tty.usbserial-141130"
+auto_discover = false
+
+##
+## USB/Serial descovery
+## https://unix.stackexchange.com/questions/361135/usb-serial-number-not-shown-with-lsusb-v-command
+## https://devblogs.microsoft.com/windows-music-dev/the-importance-of-including-a-unique-iserialnumber-in-your-usb-midi-devices/
+##
+## In short, if you use auto discover, and you have multiple devices with the same VID/PID, you will need to make
+## sure that you are running with a user that has the correct USB permissions.
+##
+# auto_discover = true
+# usb_vid = 0x0403
+# usb_pid = 0x6001
+# serial_number = 0xDEADBEEF
+
+[layout]
+    [[layout.computers]]
+    name = "work-computer"
+    right = [
+        { driver = "kvm", action = "1" }
+    ]
+
+    [[layout.computers]]
+    name = "home-computer"
+    left  = [{ driver = "kvm", action = "2" }]
+    right = [
+        { driver = "matrix", action = "01-03" },
+        { driver = "matrix", action = "02-04" },
+        { driver = "kvm", action = "4" }
+    ]
+
+    [[layout.computers]]
+    name = "streaming-computer"
+    left = [
+        { driver = "matrix", action = "01-01" },
+        { driver = "matrix", action = "02-02" },
+        { driver = "kvm", action = "2" }
+    ]

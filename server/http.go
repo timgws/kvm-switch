@@ -14,16 +14,19 @@ func serveHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
+
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	http.ServeFile(w, r, "home.html")
 }
 
 func serveLayout(w http.ResponseWriter, r *http.Request) {
 	log.Println(r.URL)
 	w.Header().Add("Content-Type", "application/json")
+
 	_, err := w.Write(JSONLayout)
 	if err != nil {
 		fmt.Println(err)
@@ -51,6 +54,16 @@ func serveRefreshStatus(w http.ResponseWriter, r *http.Request) {
 
 func serveSwap(w http.ResponseWriter, r *http.Request) {
 	actions, _ := TheLayout.FindActions("home-computer", "left")
+	TheLayout.Effect(actions)
+
+	time.Sleep(500 * time.Millisecond)
+}
+
+func serveAction(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	direction := r.PathValue("direction")
+
+	actions, _ := TheLayout.FindActions(name, direction)
 	TheLayout.Effect(actions)
 
 	time.Sleep(500 * time.Millisecond)
