@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/timgws/kvm-switch/client/icon"
@@ -16,26 +17,28 @@ import (
 
 const (
 	DisplayRefreshRate = 60
-	EnableDebugMode = true
+	EnableDebugMode    = true
 )
 
 var messages chan string
-var outgoingChanges = make(chan string)
+var outgoingChanges = make(chan string, 128)
 
 var addr = flag.String("addr", "127.0.0.1:8787", "http service address")
 var deviceName = flag.String("name", "home-computer", "the name of the device in the layout")
 
-var cQuit <- chan bool
+var cQuit <-chan bool
 
 var maxX, maxY int
 var lastX, lastY = 0, 0
 var switched = false
 var switching = false
 
+var mousePollOnce sync.Once
+var mousePollStop chan struct{}
+
 func main() {
 	flag.Parse()
 	systray.Run(onReady, onExit)
-	go PollMousePosition()
 
 	go func() {
 		for {
@@ -49,10 +52,26 @@ func main() {
 	}()
 }
 
-func PollMousePosition() {
-	go doEvery(time.Second/DisplayRefreshRate, pollMousePosition)
-	maxX, maxY = robotgo.GetScreenSize()
-	fmt.Println("[Glide] get screen size: ", maxX, maxY)
+func StartMousePolling() {
+	mousePollOnce.Do(func() {
+		maxX, maxY = robotgo.GetScreenSize()
+		fmt.Println("[Glide] get screen size: ", maxX, maxY)
+
+		mousePollStop = make(chan struct{})
+		ticker := time.NewTicker(time.Second / DisplayRefreshRate)
+
+		go func() {
+			defer ticker.Stop()
+			for {
+				select {
+				case t := <-ticker.C:
+					pollMousePosition(t)
+				case <-mousePollStop:
+					return
+				}
+			}
+		}()
+	})
 }
 
 func deviceHasAtLeastOneDisplay() bool {
@@ -116,10 +135,16 @@ func switchInput(direction string) {
 		switching = true
 	}
 
-	outgoingChanges <- makeSwap(SwapDevice{
+	msg := makeSwap(SwapDevice{
 		Device:    *deviceName,
 		Direction: direction,
 	})
+
+	select {
+	case outgoingChanges <- msg:
+	default:
+		debugLog("[Websocket] outgoing queue full, dropping swap: %s", msg)
+	}
 }
 
 func makeSwap(swap SwapDevice) string {
@@ -132,7 +157,7 @@ func onReady() {
 	log.Printf("[GUI] The application has booted")
 
 	go connectWebsocket()
-	go PollMousePosition()
+	StartMousePolling()
 	//go processInput()
 
 	systray.SetIcon(icon.Data)
@@ -157,7 +182,9 @@ func onReady() {
 // onExit runs after the GUI has asked to exit.
 // TODO: clean up some sockets here.
 func onExit() {
-	// clean up here
+	if mousePollStop != nil {
+		close(mousePollStop)
+	}
 }
 
 // debugLog will output something only if EnableDebugMode is true.
