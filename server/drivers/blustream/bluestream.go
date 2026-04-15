@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"github.com/tarm/serial"
 	d "github.com/timgws/kvm-switch/server/drivers"
+	"github.com/timgws/kvm-switch/server/serialdiscovery"
 	"log"
 	"regexp"
 	"strings"
 	"time"
 )
 
-const EnableDebugMode = false
+var EnableDebugMode = false
 
 // Reading keeps track of where the statemachine is in reading the `status` command from the BlueStream.
 type Reading int
+
 const (
 	NotReadingStatus Reading = iota
 	ReadingModel
@@ -26,7 +28,12 @@ const (
 // BlustreamConfig holds the device-specific configuration.
 type BlustreamConfig struct {
 	SerialDevice string
-	SerialBaud int
+	SerialBaud   int
+	AutoDiscover bool
+	Match        serialdiscovery.Match
+
+	ShortName string
+	Name      string
 }
 
 // BlustreamInput represents a HDMI/DVI/USB-C input on a given Blustream matrix
@@ -45,11 +52,11 @@ type BlustreamOutput struct {
 type BlustreamState struct {
 	CurrentDevice int
 
-	Model string
-	ModelName string
+	Model          string
+	ModelName      string
 	CurrentVersion string
 
-	readingInputNumber int
+	readingInputNumber  int
 	readingOutputNumber int
 }
 
@@ -88,14 +95,13 @@ type BlustreamMatrix struct {
 	// finishedSwap makes sure that matrix swaps are synchronous
 	finishedSwap chan bool
 
-	state           BlustreamState
-	switching       bool
-	switched        bool
-	statusIncoming  bool
-	statusConfirmed bool
-	statusStarted   bool
-	statusReading   Reading
-	modelSet        bool
+	state          BlustreamState
+	switching      bool
+	switched       bool
+	statusIncoming bool
+	statusStarted  bool
+	statusReading  Reading
+	modelSet       bool
 
 	// port contains the RS232 connection
 	port *serial.Port
@@ -104,7 +110,7 @@ type BlustreamMatrix struct {
 	updatedInputs []int
 
 	// Inputs are a list of all the Driver.Inputs that are present on the matrix.
-	Inputs  []BlustreamInput
+	Inputs []BlustreamInput
 
 	// Outputs are a list of all the Driver.Outputs that are present on the matrix.
 	Outputs []BlustreamOutput
@@ -112,15 +118,38 @@ type BlustreamMatrix struct {
 
 // NewInstance create a new instance of a Blustream device.
 func NewInstance() *BlustreamMatrix {
+	return NewInstanceWithConfig(BlustreamConfig{
+		SerialDevice: "/dev/tty.usbserial-141130",
+		SerialBaud:   57600,
+		ShortName:    "matrix",
+		Name:         "Blustream",
+	})
+}
+
+func NewInstanceWithConfig(cfg BlustreamConfig) *BlustreamMatrix {
+	if cfg.SerialBaud == 0 {
+		cfg.SerialBaud = 57600
+	}
+	if cfg.ShortName == "" {
+		cfg.ShortName = "matrix"
+	}
+	if cfg.Name == "" {
+		cfg.Name = "Blustream"
+	}
+
 	return &BlustreamMatrix{
 		isRunning: false,
 		Driver: &d.Driver{
-			Name: "Blustream",
-			ShortName: "matrix",
+			Name:      cfg.Name,
+			ShortName: cfg.ShortName,
 		},
 		config: BlustreamConfig{
-			SerialDevice: "/dev/tty.usbserial-141130",
-			SerialBaud: 57600,
+			SerialDevice: cfg.SerialDevice,
+			SerialBaud:   cfg.SerialBaud,
+			AutoDiscover: cfg.AutoDiscover,
+			Match:        cfg.Match,
+			ShortName:    cfg.ShortName,
+			Name:         cfg.Name,
 		},
 		state: BlustreamState{},
 	}
@@ -148,10 +177,24 @@ func (d *BlustreamMatrix) IsRunning() bool {
 // Start initializes the connection, sends first status command.
 func (d *BlustreamMatrix) Start() bool {
 	d.StartAttempted = true
-	s_dev := d.config.SerialDevice
-	s_baud := d.config.SerialBaud
 
-	c := &serial.Config{Name: s_dev, Baud: s_baud}
+	// Ensure channels exist before any goroutine uses them.
+	if d.messages == nil {
+		d.messages = make(chan string, 64)
+	}
+	if d.serialResponse == nil {
+		d.serialResponse = make(chan string, 256)
+	}
+
+	s_dev, err := serialdiscovery.Resolve(d.config.SerialDevice, d.config.AutoDiscover, d.config.Match)
+	if err != nil {
+		d.Error = err
+		d.HasError = true
+		return false
+	}
+	d.config.SerialDevice = s_dev
+
+	c := &serial.Config{Name: d.config.SerialDevice, Baud: d.config.SerialBaud}
 	s, err := serial.OpenPort(c)
 	if err != nil {
 		d.Error = err
@@ -159,16 +202,10 @@ func (d *BlustreamMatrix) Start() bool {
 	}
 
 	d.port = s
-
 	go d.readPort()
 	go d.init()
-
-	//go d.pingStatus(s)
-
 	go d.processResponses()
-
 	go d.writePort(s)
-
 	return true
 }
 
@@ -253,11 +290,8 @@ func (d *BlustreamMatrix) pingStatus() {
 	port.Flush()
 }
 
-
 // writePort manages a channel that allows us to send & receive data to this serial connection.
 func (d *BlustreamMatrix) writePort(port *serial.Port) {
-	d.messages = make(chan string)
-
 	go func() {
 		for {
 			select {
@@ -287,7 +321,6 @@ func (d *BlustreamMatrix) readPort() {
 		if err != nil {
 			log.Fatal(n, err)
 		}
-
 
 		b := bytes.Trim(buf, "\x00")
 		tmpString := string(b)
@@ -322,21 +355,19 @@ func (d *BlustreamMatrix) readPort() {
 				}
 			}
 
-			if EnableDebugMode == false{
-				debugLog2("🧐 Inspecting the buffer contents")
-				debugLog2("BUFFER CONTENTS: %s tmpString: %s", buf, tmpString)
-				debugLog2("commands: %s - %q", commands, buf)
+			if EnableDebugMode == false {
+				debugLog("🧐 Inspecting the buffer contents")
+				debugLog("BUFFER CONTENTS: %s tmpString: %s", buf, tmpString)
+				debugLog("commands: %s - %q", commands, buf)
 			}
 		} else {
-			//debugLog("Incomplete command from serial... expected newline")
+			debugLog("Incomplete command from serial... expected newline")
 		}
 	}
 }
 
 // processResponses reads serial commands that have been fully read from the serial connection.
 func (d *BlustreamMatrix) processResponses() {
-	d.serialResponse = make(chan string)
-
 	go func() {
 		for {
 			select {
@@ -394,7 +425,13 @@ func (d *BlustreamMatrix) processResponses() {
 						if len(f[0]) == 3 {
 							debugLog("Swapped input %s to output %s", f[0][2], f[0][1])
 						}
-						d.finishedSwap <- true
+						if d.finishedSwap != nil {
+							select {
+							case d.finishedSwap <- true:
+							default:
+								// don't block the serial reader if nobody is waiting
+							}
+						}
 						d.switching = false
 						d.switched = true
 					}
@@ -411,9 +448,9 @@ func (d *BlustreamMatrix) LastError() error {
 
 // GetInput will return an input with a given name
 func (d *BlustreamMatrix) GetInput(inputName string) *BlustreamInput {
-	for _, input := range d.Inputs {
-		if input.InputName == inputName {
-			return &input
+	for i := range d.Inputs {
+		if d.Inputs[i].InputName == inputName {
+			return &d.Inputs[i]
 		}
 	}
 	return nil
@@ -422,6 +459,6 @@ func (d *BlustreamMatrix) GetInput(inputName string) *BlustreamInput {
 // debugLog will output something only if EnableDebugMode is true.
 func debugLog(msg string, v ...interface{}) {
 	if EnableDebugMode {
-		log.Printf("[blustream]: " + msg, v...)
+		log.Printf("[blustream]: "+msg, v...)
 	}
 }

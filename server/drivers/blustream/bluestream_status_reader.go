@@ -140,30 +140,30 @@ func (d *BlustreamMatrix) readInputLine(res []string) {
 						InputName: res[0],
 						Active:    isActive(res[2]),
 					},
-					Edid:  res[1],
+					Edid: res[1],
 				}
 
 				d.Inputs = append(d.Inputs, newInput)
 			} else {
-				for k, input := range d.Inputs {
-					if input.InputName == res[0] {
-						updatedInput := false
+				for k := range d.Inputs {
+					if d.Inputs[k].InputName == res[0] {
+						updated := false
 						isSourceActive := isActive(res[2])
 
-						if input.Active != isSourceActive {
-							updatedInput = true
-							input.Active = isSourceActive
+						if d.Inputs[k].Active != isSourceActive {
+							d.Inputs[k].Active = isSourceActive
+							updated = true
+						}
+						if d.Inputs[k].Edid != res[1] {
+							d.Inputs[k].Edid = res[1]
+							updated = true
 						}
 
-						if input.Edid != res[1] {
-							updatedInput = true
-							input.Edid = res[1]
-						}
-
-						if updatedInput {
-							debugLog(input.InputName, "has changed")
+						if updated {
+							debugLog("%s has changed", d.Inputs[k].InputName)
 							d.updatedInputs = append(d.updatedInputs, k)
 						}
+						break
 					}
 				}
 
@@ -191,33 +191,31 @@ func (d *BlustreamMatrix) readOutputLine(res []string) {
 				newOutput := BlustreamOutput{
 					Output: &drivers.Output{
 						OutputName: res[0],
-						Active: isActive(res[2]) && isActive(res[3]),
-						Input: input,
+						Active:     isActive(res[2]) && isActive(res[3]),
+						Input:      input,
 					},
-					Edid:  res[1],
+					Edid: res[1],
 				}
 
 				d.Outputs = append(d.Outputs, newOutput)
 			} else {
 				for k, output := range d.Outputs {
-					if output.OutputName == res[0] {
-						updatedInput := false
-						isSourceActive := isActive(res[2])
+					updatedInput := false
+					isSourceActive := isActive(res[2])
 
-						if output.Active != isSourceActive {
-							updatedInput = true
-							output.Active = isSourceActive
-						}
+					if output.Active != isSourceActive {
+						updatedInput = true
+						output.Active = isSourceActive
+					}
 
-						if output.Edid != res[1] {
-							updatedInput = true
-							output.Edid = res[1]
-						}
+					if output.Edid != res[1] {
+						updatedInput = true
+						output.Edid = res[1]
+					}
 
-						if updatedInput {
-							log.Println(output.OutputName, "has changed")
-							d.updatedInputs = append(d.updatedInputs, k)
-						}
+					if updatedInput {
+						log.Println(output.OutputName, "has changed")
+						d.updatedInputs = append(d.updatedInputs, k)
 					}
 				}
 
