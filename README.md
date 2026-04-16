@@ -37,17 +37,8 @@ are wanted to be controlled.
 
 A Raspberry Pi or similar low-powered device is ideal for this.
 
-For my setup, I use a SV431DVIUDDM and CMX44AB.
-
-* Update the `registerDrivers()` function inside `server/main.go` to register drivers for the devices you want to
-  control.
-* Update the serial port in `server/drivers/startech_kvm/startech_kvm.go`
-  and/or `server/drivers/blustream/blustream.go`
-* Define the correct layout in `server/layout.go` describing what you want performed when the mouse moves between
-  screens
-
-Note that multiple instances of the matrix and KVM drivers can be started at the same time (see `server/main.go`),
-allowing for chains if control of a larger range of devices at once is desired.
+To begin, modify [config.toml](server/config.toml) with your desired layout and basic configuration
+settings.
 
 Start the server:
 ```shell
