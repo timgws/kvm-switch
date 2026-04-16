@@ -69,8 +69,6 @@ To see if the server is running successfully, you can use one of the [API Endpoi
 
 ## TODO/Upcoming Features
 * [x] Improve switching solution for Blustream devices.
-* [x] [#1](https://github.com/timgws/kvm-switch/issues/1)
-  Fix the client, so that it reconnects when the server's connection goes away.
 * [ ] [#2](https://github.com/timgws/kvm-switch/issues/2)
   Enable using hotkeys to lock the current screen/not send glide commands to the server.
 * [ ] [#3](https://github.com/timgws/kvm-switch/issues/3)
@@ -79,9 +77,9 @@ To see if the server is running successfully, you can use one of the [API Endpoi
   Support Synergy, so DDC/CI commands can be issued for additional hardware-free solution.
 * [ ] [#4](https://github.com/timgws/kvm-switch/issues/4)
   Web interface to define the edges of different devices.
-* [ ] [#5](https://github.com/timgws/kvm-switch/issues/5)
+* [x] [#5](https://github.com/timgws/kvm-switch/issues/5)
   Implement SSL for connections.
-* [ ] [#6](https://github.com/timgws/kvm-switch/issues/6)
+* [x] [#6](https://github.com/timgws/kvm-switch/issues/6)
   Implement authentication for connections.
 * [ ] [#7](https://github.com/timgws/kvm-switch/issues/7)
   Investigate whats required to pass keypresses and mouse movements to the client.
